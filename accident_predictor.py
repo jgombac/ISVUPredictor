@@ -14,12 +14,20 @@ mappings = {
 }
 
 def read_file(filename):
-    file = pd.read_csv(filename, sep=";")
+    file = pd.read_excel(filename, sheetname="List2")
     file["SifraOdsekaUlice"] = file["SifraOdsekaUlice"].astype(str)
-    #file["UraPN"] = file["UraPN"].astype(str)
+    file["SifraCesteNaselja"] = file["SifraCesteNaselja"].astype(str)
+    file["VrstaCeste"] = file["VrstaCeste"].astype(str)
+    file["UraPN"] = file["UraPN"].astype(np.int32)
+    file["Dan"] = file["UraPN"].astype(np.int32)
+    file["Mesec"] = file["UraPN"].astype(np.int32)
     for column in file:
         if file[column].dtype == object:
-            file[column] = file[column].map(lambda x: x.strip())
+            try:
+                file[column] = file[column].map(lambda x: x.strip())
+            except Exception as e:
+                print(column, e)
+                exit(0)
     return file
 
 
@@ -60,10 +68,12 @@ def train(features, labels):
     v_naselju = tf.feature_column.categorical_column_with_vocabulary_list(
         "VNaselju", features["VNaselju"].unique()
     )
+    ura = tf.feature_column.numeric_column("UraPN")
     dan = tf.feature_column.numeric_column("Dan")
     mesec = tf.feature_column.numeric_column("Mesec")
 
-    feature_columns = [dan,
+    feature_columns = [ura,
+                       dan,
                        mesec,
                        tf.feature_column.indicator_column(v_naselju),
                        tf.feature_column.indicator_column(vrsta_ceste),
@@ -74,10 +84,12 @@ def train(features, labels):
                        tf.feature_column.indicator_column(stanje_prometa),
                        tf.feature_column.indicator_column(stanje_vozisca),
                        tf.feature_column.indicator_column(vrsta_vozisca)]
-    estimator = tf.estimator.DNNRegressor(
+    estimator = tf.estimator.DNNClassifier(
         hidden_units=[100, 200, 100],
         feature_columns=feature_columns,
-        model_dir="gombi"
+        n_classes=5,
+        label_vocabulary=["B", "H", "L", "S", "U"],
+        model_dir="accidents_model"
     )
 
     train_input = tf.estimator.inputs.pandas_input_fn(
@@ -88,16 +100,16 @@ def train(features, labels):
     )
 
     estimator.train(train_input, steps=500)
-    #
-    # test_input = tf.estimator.inputs.pandas_input_fn(
-    #     x=features,
-    #     y=labels,
-    #     num_epochs=1,
-    #     shuffle=False
-    # )
-    #
-    # accuracy = estimator.evaluate(test_input)
-    # print(accuracy)
+
+    test_input = tf.estimator.inputs.pandas_input_fn(
+        x=features,
+        y=labels,
+        num_epochs=1,
+        shuffle=False
+    )
+
+    accuracy = estimator.evaluate(test_input)
+    print(accuracy)
 
 
 
@@ -129,10 +141,12 @@ def predict(features, vocabulary):
     v_naselju = tf.feature_column.categorical_column_with_vocabulary_list(
         "VNaselju", vocabulary["VNaselju"]
     )
+    ura = tf.feature_column.numeric_column("UraPN")
     dan = tf.feature_column.numeric_column("Dan")
     mesec = tf.feature_column.numeric_column("Mesec")
 
-    feature_columns = [dan,
+    feature_columns = [ura,
+                       dan,
                        mesec,
                        tf.feature_column.indicator_column(v_naselju),
                        tf.feature_column.indicator_column(vrsta_ceste),
@@ -143,19 +157,23 @@ def predict(features, vocabulary):
                        tf.feature_column.indicator_column(stanje_prometa),
                        tf.feature_column.indicator_column(stanje_vozisca),
                        tf.feature_column.indicator_column(vrsta_vozisca)]
-    estimator = tf.estimator.DNNRegressor(
+    estimator = tf.estimator.DNNClassifier(
         hidden_units=[100, 200, 100],
         feature_columns=feature_columns,
-        model_dir="gombi"
+        n_classes=5,
+        label_vocabulary=["B", "H", "L", "S", "U"],
+        model_dir="accidents_model"
     )
     input = tf.estimator.inputs.pandas_input_fn(
         x=pd.DataFrame(features, index=[0]),
         num_epochs=1,
         shuffle=False
     )
-    prediction = estimator.predict(input_fn=input)
-
-    return int(list(prediction)[0]["predictions"][0])
+    #prediction = list(estimator.predict(input_fn=input))
+    prediction = list(estimator.predict(input_fn=input))[0]["classes"][0].decode("utf-8")
+    print(prediction)
+    #return int(list(prediction)[0]["predictions"][0])
+    return prediction
 
 def save_items(features):
         dct = {
@@ -168,6 +186,7 @@ def save_items(features):
             "SifraCesteNaselja": features["SifraCesteNaselja"].unique(),
             "SifraOdsekaUlice": features["SifraOdsekaUlice"].unique(),
             "VNaselju": features["VNaselju"].unique(),
+            "UraPN": features["UraPN"].unique(),
             "Dan": features["Dan"].unique(),
             "Mesec": features["Mesec"].unique(),
         }
@@ -192,10 +211,11 @@ def load_items(window):
     return vocabulary
 
 def on_predict(callback, features):
-    if len(features) != 11:
+    if len(features) != 12:
         print("You have to select 1 of everything")
         callback("None")
     else:
+        features["UraPN"] = int(features["UraPN"])
         features["Dan"] = int(features["Dan"])
         features["Mesec"] = int(features["Mesec"])
         prediction = predict(features, VOCABULARY)
@@ -204,22 +224,36 @@ def on_predict(callback, features):
 
 VOCABULARY = None
 
+def num_occur(data):
+
+    raw_labels = data["KlasifikacijaNesrece"]
+
+    num_occurrences = pd.DataFrame(raw_labels.value_counts().reset_index())
+    num_occurrences.columns = ["value", "occurrences"]
+    #slice = num_occurrences.head(3)
+    print(num_occurrences)
+
 def init():
-    #app = QApplication(sys.argv)
+    #data = read_file("PN.xlsx")
+    #num_occur(data)
+    #exit()
+
+    # app = QApplication(sys.argv)
     w = AccidentsDialog(on_predict)
     global VOCABULARY
     VOCABULARY = load_items(w)
     w.show()
 
-    # data = read_file("PN_cleaned.csv")
-    # labels = data["UraPN"]
-    # features = data.drop(["UraPN"], axis=1)
-    # save_items(features)
+
+    #print(data)
+    #labels = data["KlasifikacijaNesrece"]
+    #features = data.drop(["KlasifikacijaNesrece"], axis=1)
+    #save_items(features)
     # for f, l in zip(features.iterrows(), labels):
     #     print(f[1].to_dict())
     #train(features, labels)
 
-    #sys.exit(app.exec_())
+    # sys.exit(app.exec_())
 
 if __name__ == "__main__":
     init()

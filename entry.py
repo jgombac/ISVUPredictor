@@ -21,10 +21,10 @@ class MainDialog(QMainWindow):
         deathsBtn.clicked.connect(self.show_deaths)
 
     def show_accidents(self):
-        dt.init()
+        ac.init()
 
     def show_deaths(self):
-        ac.init()
+        dt.init()
 
 
 if __name__ == "__main__":

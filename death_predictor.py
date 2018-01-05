@@ -19,7 +19,8 @@ columns = {
         1: "samski/a",
         2: "poročen/a",
         3: "vdovec/a",
-        4: "razvezan/a"
+        4: "razvezan/a",
+        9: "neznano"
     },
     "spol": {
         1: "moški",
@@ -218,6 +219,7 @@ VOCABULARY = None
 def init():
     # data = read_file(DEATHS)
     # features, labels = training_data(data)
+
     #
     # train(features, labels)
     # save_items(features)
